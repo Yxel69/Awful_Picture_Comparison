@@ -1,0 +1,118 @@
+import cv2
+import numpy as np
+import glob as glob
+import os as os
+def align_images(image1, image2):
+    gray1 = cv2.cvtColor(image1, cv2.COLOR_BGR2GRAY)
+    gray2 = cv2.cvtColor(image2, cv2.COLOR_BGR2GRAY)
+    
+    orb = cv2.ORB_create()
+    keypoints1, descriptors1 = orb.detectAndCompute(gray1, None)
+    keypoints2, descriptors2 = orb.detectAndCompute(gray2, None)
+    
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+    matches = bf.match(descriptors1, descriptors2)
+    matches = sorted(matches, key=lambda x: x.distance)
+    
+    points1 = np.zeros((len(matches), 2), dtype=np.float32)
+    points2 = np.zeros((len(matches), 2), dtype=np.float32)
+    
+    for i, match in enumerate(matches):
+        points1[i, :] = keypoints1[match.queryIdx].pt
+        points2[i, :] = keypoints2[match.trainIdx].pt
+    
+    h, mask = cv2.findHomography(points2, points1, cv2.RANSAC)
+    
+    height, width = image1.shape[:2]
+    aligned_image2 = cv2.warpPerspective(image2, h, (width, height))
+    
+    return aligned_image2
+
+def adjust_exposure(image1, image2):
+    lab1 = cv2.cvtColor(image1, cv2.COLOR_BGR2LAB)
+    lab2 = cv2.cvtColor(image2, cv2.COLOR_BGR2LAB)
+    
+    l1, a1, b1 = cv2.split(lab1)
+    l2, a2, b2 = cv2.split(lab2)
+    
+    l1_mean, l1_stddev = cv2.meanStdDev(l1)
+    l2_mean, l2_stddev = cv2.meanStdDev(l2)
+    
+    l2 = ((l2 - l2_mean[0][0]) / l2_stddev[0][0]) * l1_stddev[0][0] + l1_mean[0][0]
+    l2 = np.clip(l2, 0, 255).astype(np.uint8)
+    
+    adjusted_lab2 = cv2.merge((l2, a2, b2))
+    adjusted_image2 = cv2.cvtColor(adjusted_lab2, cv2.COLOR_LAB2BGR)
+    
+    return adjusted_image2
+
+def create_pattern_image(good_image_paths, bad_image_path):
+    bad_image = cv2.imread(bad_image_path)
+    aligned_images = []
+    
+    for path in good_image_paths:
+        good_image = cv2.imread(path)
+        aligned_image = align_images(bad_image, good_image)
+        adjusted_image = adjust_exposure(bad_image, aligned_image)
+        aligned_images.append(adjusted_image)
+    
+    pattern_image = np.mean(aligned_images, axis=0).astype(np.uint8)
+    return pattern_image
+
+def compare_images(saved_pattern_image, bad_image_path, threshold1, threshold2):
+    # Read the images
+    image1 = cv2.imread(saved_pattern_image)
+    image2 = cv2.imread(bad_image_path)
+    
+    # Convert images to grayscale
+    gray1 = cv2.cvtColor(image1, cv2.COLOR_BGR2GRAY)
+    gray2 = cv2.cvtColor(image2, cv2.COLOR_BGR2GRAY)
+    
+    # Calculate the absolute difference between the images
+    diff = cv2.absdiff(gray1, gray2)
+    
+    # Apply a binary threshold to the entire image
+    _, thresh1 = cv2.threshold(diff, threshold1, 255, cv2.THRESH_BINARY)
+    
+    # Apply a different threshold to the entire image (if needed)
+    _, thresh2 = cv2.threshold(diff, threshold2, 255, cv2.THRESH_BINARY)
+    
+    # Combine the thresholded images
+    combined_thresh = cv2.bitwise_or(thresh1, thresh2)
+    
+    # Use morphological operations to highlight the differences
+    kernel = np.ones((5, 5), np.uint8)
+    diff_highlighted = cv2.dilate(combined_thresh, kernel, iterations=1)
+    
+    #append all outputs to a singular window and display 
+    pattern_image_resized = cv2.resize(image1, (diff.shape[1], diff.shape[0]))
+    pattern_image_resized = cv2.resize(image1, (diff_highlighted.shape[1], diff_highlighted.shape[0]))
+    Hori = np.concatenate((pattern_image_resized , image2, diff, diff_highlighted), axis=1) 
+    cv2.imshow('HORIZONTAL', Hori) 
+    # Wait for a key press and close all windows
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+# Define the thresholds
+threshold1 = 30  # First threshold for the entire image
+threshold2 = 30  # Second threshold for the entire image
+
+# Paths to the good images and the bad image
+image_directory = '/run/media/shroomy/Media/BackUps/hackthefuture2024/files/good/depth/'  # folder in which all your good images are safed 
+good_image_paths = sorted(glob.glob(os.path.join(image_directory, '*.png'))) # grab all good pictures from the image_directory
+bad_image_path = '<bad_image_path>' #insert path to your bad_image / the image you want to compare
+#saved_pattern_image = '/run/media/shroomy/Media/BackUps/hackthefuture2024/files/good//pattern_image.png'
+# Create the pattern image
+pattern_image = create_pattern_image(good_image_paths, bad_image_path)
+
+# Compare pattern_image to bad_image
+#compare_images(saved_pattern_image, bad_image_path,threshold1,threshold2)
+
+# Display the pattern image
+cv2.imshow("Pattern Image", pattern_image)
+
+# Save the pattern image in the working directory 
+cv2.imwrite("pattern_image.png", pattern_image)
+cv2.waitKey(0)
+cv2.destroyAllWindows()
+quit()
