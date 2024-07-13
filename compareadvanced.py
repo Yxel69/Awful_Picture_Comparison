@@ -109,8 +109,8 @@ def compare_images(image_path1, image_path2, threshold1, threshold2,roithreshold
     cv2.destroyAllWindows()
     quit()
 # Paths to the images to compare
-image_path1 = '/run/media/shroomy/Media/BackUps/hackthefuture2024/files/good/images/pattern_image.png'
-image_path2 = '/run/media/shroomy/Media/BackUps/hackthefuture2024/files/bad/rotation/c/images/0001.png'
+image_path1 = '<path_to_pattern_picture>'
+image_path2 = '<path_to_comparison_picture>'
 
 # Define the region of interest (x, y, width, height)
 roi = (0, 0, 0, 0)  # Example values, adjust as needed (x y width height)
